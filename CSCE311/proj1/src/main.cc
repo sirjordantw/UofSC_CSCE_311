@@ -18,7 +18,11 @@ struct Row{
 //Structure of a thread of that row.
 struct Thread{
     int threadID;
+    int k;
+    //Shared
+    int *currID;
     const std::vector<Row>* rows;
+    const Timings_t* timeout_ms;
 };
 
 void* StartRoutine(void* arg);
@@ -27,8 +31,9 @@ int main(int argc, char *argv[]){
     CliMode mode;
     Time_t timeout_ms;
     CliParse(argc, argv, &mode, &timeout_ms);
-    int n = (argc == 2) ? ::atoi(argv[1]) : get_nprocs();
+    int n = get_nprocs();
     std::vector<::pthread_t> thread_pool(n);
+    int currID;
 
     int rows;
     std::cin >> rows;
@@ -42,7 +47,7 @@ int main(int argc, char *argv[]){
         rowsv.push_back(r);
     }
 
-    std::cout << "Enter max threads (1 - 8): " << std::flush;
+    ThreadLog("Enter max threads (1 - %i): ", n);
 
     int k;
     std::ifstream tty_in("/dev/tty");
@@ -50,20 +55,33 @@ int main(int argc, char *argv[]){
         tty_in >> k;
         
         if(k < 1){
-            std::cout << "Input under 1. Autosetting k = 1." << std::endl;
+            ThreadLog("Input under 1. Autosetting k = 1.");
             k = 1;
         }
-        else if(k > 8){
-            std::cout << "Input over 8. Autosetting k = 8." << std::endl;
-            k = 8;
+        else if(k > n){
+            ThreadLog("Input over %i. Autosetting k = %i.", n, n);
+            k = n;
         }
+    }
+
+    if(mode == CLI_MODE_ALL){
+        currID = k;
+    }
+    else if(mode == CLI_MODE_RATE){
+        currID = 0;
+    }
+    else if(mode == CLI_MODE_THREAD){
+        currID = 1;
     }
 
     std::vector<Thread> threads(k);
 
     for (int i = 0; i < k; i++) {
         threads[i].threadID = i + 1;
+        threads[i].k = k;
         threads[i].rows = &rowsv;
+        threads[i].currID = &currID;
+        threads[i].timeout_ms = (Timings_t)&timeout_ms;
 
         ::pthread_create(&thread_pool[i], nullptr, StartRoutine, &threads[i]);
     }
@@ -76,17 +94,18 @@ int main(int argc, char *argv[]){
 }
 
 void* StartRoutine(void* arg){
-    Thread* x = static_cast<Thread*>(arg); //Gets Thread object
+    Thread* x = static_cast<Thread*>(arg);
     int i = x->threadID;
-    std::string threadNum = "[thread " + std::to_string(i) + "]";
 
-    std::cout << threadNum + " started" << std::endl << std::flush;
+    ThreadLog("[thread %i] started", i);
+    Timings_t startTime = Timings_NowMs();
 
-    if((i - 1) < (int)x->rows->size()){
-        const Row& r = (*(x->rows))[i - 1];
-        std::cout << threadNum + " completed row " + std::to_string(i - 1) << std::endl << std::flush;
+    while(i < *(x->currID) || i < x->k){ }
+
+    for(int ind = i; ind < (int)x->rows->size() && !Timings_TimeoutExpired(startTime, *(x->timeout_ms)); ind += x->k){
+
     }
 
-    std::cout << threadNum + " returned" << std::endl << std::flush;
+    ThreadLog("[thread %i] returned", i);
     return nullptr;
 }

@@ -30,7 +30,6 @@ struct Shared {
 struct Thread {
     int threadID;
     int k;
-    // Shared
     int *currID;
     const std::vector<Row>* rows;
     std::vector<Shared>* out;

@@ -37,8 +37,8 @@ typedef enum {
 
 typedef uint32_t Time_t;
 
-//CliMode mode;
-//Timing_t timeout;
+// CliMode mode;
+// Timing_t timeout;
 
 /* Parse command-line arguments into output parameters.
  *

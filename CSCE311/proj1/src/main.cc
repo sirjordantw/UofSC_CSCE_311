@@ -1,32 +1,33 @@
 // Copyright 2026 Jordan Weinstein
+
+#include <sys/sysinfo.h>
+
+#include <fstream>
+#include <iostream>
+#include <vector>
+
 #include "../lib/cli_parser.h"
 #include "../lib/error.h"
 #include "../lib/sha256.h"
 #include "../lib/thread_log.h"
 #include "../lib/timings.h"
 
-#include <sys/sysinfo.h>
-
-#include <iostream>
-#include <fstream>
-#include <vector>
-
 // Structure of a row from txt file.
-struct Row{
+struct Row {
     std::string id;
     std::string value;
     std::size_t iterations;
 };
 
 // Structure of shared threads per output of rows.
-struct Shared{
+struct Shared {
     int threadID;
     std::string digest;
     bool finished;
 };
 
 // Structure of a thread of that row.
-struct Thread{
+struct Thread {
     int threadID;
     int k;
     // Shared
@@ -38,10 +39,10 @@ struct Thread{
 
 // Reduces string size to make the print look more stylized
 static std::string reduce(const std::string& s, std::size_t max) {
-    if (max <= 3){
+    if (max <= 3) {
         return s.substr(0, max);
     }
-    if (s.size() <= max){ 
+    if (s.size() <= max) {
         return s;
     }
     return s.substr(0, max - 3) + "...";
@@ -52,9 +53,10 @@ CliMode mode;
 
 void* StartRoutine(void* arg);
 
-int main(int argc, char *argv[]){
+int main(int argc, char *argv[]) {
     Time_t timeout_ms;
     CliParse(argc, argv, &mode, &timeout_ms);
+
     int n = get_nprocs();
     std::vector<::pthread_t> thread_pool(n);
     int currID = 0;
@@ -66,7 +68,7 @@ int main(int argc, char *argv[]){
     std::vector<Row> rowsv;
     rowsv.reserve(rows);
 
-    for (int i = 0; i < rows; i++){
+    for (int i = 0; i < rows; i++) {
         Row r;
         std::cin >> r.id >> r.value >> r.iterations;
         rowsv.push_back(r);
@@ -77,14 +79,12 @@ int main(int argc, char *argv[]){
 
     int k;
     std::ifstream tty_in("/dev/tty");
-    if (tty_in){
+    if (tty_in) {
         tty_in >> k;
-        
-        if (k < 1){
+        if (k < 1) {
             ThreadLog("Input under 1. Autosetting k = 1.");
             k = 1;
-        }
-        else if (k > n){
+        } else if (k > n) {
             ThreadLog("Input over %i. Autosetting k = %i.", n, n);
             k = n;
         }
@@ -102,50 +102,50 @@ int main(int argc, char *argv[]){
         threads[i].out = &out;
         threads[i].currID = &currID;
         threads[i].timeout_ms = timeout_ms;
- 
-        ::pthread_create(&thread_pool[i], nullptr, StartRoutine, &threads[i]);  
+
+        ::pthread_create(&thread_pool[i], nullptr, StartRoutine, &threads[i]);
         // Creates an exectable thread
     }
 
     // Mode setting
-    if (mode == CLI_MODE_ALL){
+    if (mode == CLI_MODE_ALL) {
         currID = k;
-    }
-    else if (mode == CLI_MODE_RATE){
-        for (int relT = 1; relT <= k; relT++){
+    } else if (mode == CLI_MODE_RATE) {
+        for (int relT = 1; relT <= k; relT++) {
             currID = relT;
             Timings_SleepMs(1);
-        }  // Loop made to gradually increase currID by 1 ms, 
-        //while releasing an additional thread each time.
-    }
-    else if (mode == CLI_MODE_THREAD){
+        }
+        // Loop made to gradually increase currID per 1 ms,
+        // while releasing an additional thread each time.
+    } else if (mode == CLI_MODE_THREAD) {
         currID = 1;
     }
 
-    // Blocking
+    // Blocking until thread termination
     for (int i = 0; i < k; i++) {
-        ::pthread_join(thread_pool[i], nullptr);  
-        // Blocks call of other threads in pool until thread target terminates
+        ::pthread_join(thread_pool[i], nullptr);
     }
 
     // Goes through each thread within the row.
     ThreadLog("Thread       Start           Encryption");
-    for (int i = 1; i < static_cast<int>(rowsv.size()); i++){
-        const char* dig = 
+    for (int i = 0; i < static_cast<int>(rowsv.size()); i++) {
+        const char* dig =
         (out[i].finished) ? out[i].digest.c_str() : "timeout";
-        ThreadLog("%i            %-16s%s", i, 
-            reduce(rowsv[i].value, 12).c_str(), dig);
+        ThreadLog("%i            %-16s%s",
+            i,
+            reduce(rowsv[i].value, 12).c_str(),
+            dig);
     }
 
     return 0;
 }
 
-void* StartRoutine(void* arg){
+void* StartRoutine(void* arg) {
     Thread* x = static_cast<Thread*>(arg);
     int i = x->threadID;
 
     // Checks if index goes beyond max threads given
-    if (i > x->k){
+    if (i > x->k) {
         ThreadLog("[thread %i] returned", i);
         return nullptr;
     }
@@ -158,14 +158,17 @@ void* StartRoutine(void* arg){
     ThreadLog("[thread %i] started", i);
 
     // Racy
-    if (mode == CLI_MODE_THREAD && i < x->k){
+    if (mode == CLI_MODE_THREAD && i < x->k) {
         *(x->currID) = i + 1;
     }
 
     Timings_t startTime = Timings_NowMs();
 
     // Work
-    for (int ind = i; ind < static_cast<int>(x->rows->size()) && !Timings_TimeoutExpired(startTime, x->timeout_ms); ind += x->k){
+    for (int ind = i;
+        ind < static_cast<int>(x->rows->size()) &&
+        !Timings_TimeoutExpired(startTime, x->timeout_ms);
+        ind += x->k) {
         const Row& r = (*(x->rows))[ind];
 
         // Hashes the data for encryption in 64-bit hex form
@@ -174,14 +177,13 @@ void* StartRoutine(void* arg){
             reinterpret_cast<const uint8_t*>(r.value.data()),
             r.value.size(),
             static_cast<uint32_t>(r.iterations),
-            hexOut
-        );
+            hexOut);
 
         // Gives data to Shared structure.
         (*(x->out))[ind].threadID = i;
         (*(x->out))[ind].digest = hexOut;
         (*(x->out))[ind].finished = true;
-        
+
         ThreadLog("[thread %i] completed row %i", i, i - 1);
     }
 
